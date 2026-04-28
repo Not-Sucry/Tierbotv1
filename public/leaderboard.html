@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>fakepixel tier test - Leaderboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        .rank-s { @apply bg-yellow-400 text-black; }
+        .rank-a { @apply bg-orange-500 text-white; }
+        .rank-b { @apply bg-blue-500 text-white; }
+        .rank-c { @apply bg-gray-500 text-white; }
+        
+        .position-badge {
+            @apply w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg;
+        }
+
+        .position-1 { @apply bg-gradient-to-br from-yellow-400 to-yellow-600 text-black; }
+        .position-2 { @apply bg-gradient-to-br from-gray-300 to-gray-500 text-black; }
+        .position-3 { @apply bg-gradient-to-br from-orange-400 to-orange-600 text-black; }
+        .default-pos { @apply bg-purple-700 text-white; }
+
+        .player-card {
+            @apply bg-gray-800 rounded-lg p-4 mb-3 border border-purple-500 hover:border-purple-400 transition;
+        }
+
+        .tier-icon {
+            @apply w-8 h-8 rounded flex items-center justify-center text-xs font-bold;
+        }
+
+        .fade-update {
+            animation: fadeUpdate 0.5s ease-in-out;
+        }
+
+        @keyframes fadeUpdate {
+            0% { background-color: rgba(168, 85, 247, 0.3); }
+            100% { background-color: transparent; }
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white">
+    <div id="app"></div>
+
+    <script>
+        let leaderboard = [];
+        let selectedGamemode = 'all';
+        let socket = null;
+
+        const GAMEMODES = ['bedfight', 'sumo', 'the_classic', 'the_bridge'];
+        const GAMEMODE_NAMES = {
+            'bedfight': 'Bedfight',
+            'sumo': 'Sumo',
+            'the_classic': 'The Classic',
+            'the_bridge': 'The Bridge'
+        };
+
+        const GAMEMODE_EMOJIS = {
+            'bedfight': '🛏️',
+            'sumo': '🥋',
+            'the_classic': '⚔️',
+            'the_bridge': '🌉'
+        };
+
+        const RANK_COLORS = {
+            'S': 'rank-s',
+            'A': 'rank-a',
+            'B': 'rank-b',
+            'C': 'rank-c'
+        };
+
+        function getPositionBadgeClass(position) {
+            if (position === 1) return 'position-1';
+            if (position === 2) return 'position-2';
+            if (position === 3) return 'position-3';
+            return 'default-pos';
+        }
+
+        function getPositionMedal(position) {
+            if (position === 1) return '🥇';
+            if (position === 2) return '🥈';
+            if (position === 3) return '🥉';
+            return '';
+        }
+
+        function initSocket() {
+            socket = io();
+            
+            socket.on('leaderboardUpdate', (data) => {
+                console.log('📊 Leaderboard updated');
+                leaderboard = data;
+                render();
+            });
+
+            socket.on('rankUpdated', (data) => {
+                console.log('✅ Rank updated:', data);
+                fetchLeaderboard();
+            });
+
+            socket.on('rankRemoved', (data) => {
+                console.log('✅ Rank removed:', data);
+                fetchLeaderboard();
+            });
+
+            socket.on('connect', () => {
+                console.log('✅ Connected to server');
+            });
+
+            socket.on('disconnect', () => {
+                console.log('❌ Disconnected from server');
+            });
+        }
+
+        async function fetchLeaderboard() {
+            try {
+                const res = await fetch('/api/leaderboard');
+                if (res.ok) {
+                    leaderboard = await res.json();
+                    console.log('Leaderboard data:', leaderboard);
+                    render();
+                }
+            } catch (err) {
+                console.error('Failed to fetch leaderboard:', err);
+            }
+        }
+
+        function render() {
+            let leaderboardHTML = '';
+            
+            if (leaderboard.length === 0) {
+                leaderboardHTML = '<div class="bg-gray-800 rounded-lg border border-gray-700 px-6 py-12 text-center text-gray-400"><p class="text-2xl mb-2">📊 No rankings yet</p><p class="text-sm">Use <code>/tier set</code> in Discord to add rankings</p></div>';
+            } else {
+                let cards = [];
+                for (let idx = 0; idx < leaderboard.length; idx++) {
+                    const player = leaderboard[idx];
+                    const position = idx + 1;
+                    const posClass = getPositionBadgeClass(position);
+                    const medal = getPositionMedal(position);
+                    
+                    let tierHTML = '';
+                    if (player.ranks && player.ranks.length > 0) {
+                        for (let i = 0; i < player.ranks.length; i++) {
+                            const r = player.ranks[i];
+                            tierHTML += '<div class="tier-icon ' + RANK_COLORS[r.rank] + '">' + GAMEMODE_EMOJIS[r.gamemode] + ' ' + r.rank + '</div>';
+                        }
+                    }
+                    
+                    const card = `
+                        <div class="player-card fade-update">
+                            <div class="flex items-start gap-4">
+                                <div class="position-badge ${posClass}">${position}</div>
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center gap-2 mb-2">
+                                        <h3 class="text-lg font-bold">${player.user_id || 'Unknown'}</h3>
+                                        ${medal ? '<span class="text-2xl">' + medal + '</span>' : ''}
+                                    </div>
+                                    <p class="text-gray-400 text-sm mb-3">
+                                        <span class="font-semibold text-purple-300">${player.points || 0} points</span> • 
+                                        <span>${player.gamemodes_ranked || 0} tier${(player.gamemodes_ranked || 0) === 1 ? '' : 's'}</span>
+                                    </p>
+                                    <div class="flex flex-wrap gap-2">
+                                        ${tierHTML}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    cards.push(card);
+                }
+                leaderboardHTML = '<div class="space-y-3">' + cards.join('') + '</div>';
+            }
+
+            const tabButtonsHTML = GAMEMODES.map(gm => 
+                '<button onclick="selectedGamemode=\'' + gm + '\'; render()" class="px-4 py-2 rounded-lg font-semibold transition ' + (selectedGamemode === gm ? 'bg-purple-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600') + '">' + GAMEMODE_EMOJIS[gm] + ' ' + GAMEMODE_NAMES[gm] + '</button>'
+            ).join('');
+
+            document.getElementById('app').innerHTML = `
+                <div class="min-h-screen bg-gray-900">
+                    <nav class="bg-gray-800 border-b border-purple-600 sticky top-0 z-50">
+                        <div class="max-w-6xl mx-auto px-6 py-4 flex justify-between items-center">
+                            <div class="flex items-center gap-3">
+                                <span class="text-3xl">💎</span>
+                                <h1 class="text-2xl font-bold">fakepixel tier test</h1>
+                            </div>
+                            <p class="text-gray-400 text-sm">🎮 Control rankings with <code>/tier</code> command</p>
+                        </div>
+                    </nav>
+
+                    <div class="bg-gray-800 border-b border-gray-700 sticky top-16 z-40">
+                        <div class="max-w-6xl mx-auto px-6 py-4">
+                            <div class="flex gap-2 overflow-x-auto pb-2">
+                                <button onclick="selectedGamemode='all'; render()" class="px-4 py-2 rounded-lg font-semibold transition ${selectedGamemode === 'all' ? 'bg-purple-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}">
+                                    Overall
+                                </button>
+                                ${tabButtonsHTML}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="max-w-6xl mx-auto px-6 py-8">
+                        <h2 class="text-3xl font-bold mb-6">🏆 Rankings</h2>
+                        ${leaderboardHTML}
+                    </div>
+
+                    <div class="bg-gray-800 border-t border-gray-700 mt-12 py-6">
+                        <div class="max-w-6xl mx-auto px-6 text-center text-gray-400 text-sm">
+                            <p>✨ Real-time leaderboard • 🎮 Manage with Discord commands • 📊 Updates instantly</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            render();
+            initSocket();
+            fetchLeaderboard();
+        });
+    </script>
+</body>
+</html>
