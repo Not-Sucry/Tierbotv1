@@ -7,6 +7,7 @@ module.exports = {
 
   staffRoleId: process.env.STAFF_ROLE_ID,
   tierTesterRoleId: '1490690065137930323',
+  basicAccessRoleId: '1491000778939170940',
   logChannelId: process.env.LOG_CHANNEL_ID,
   resultsChannelId: '1490690407380554049',
 
